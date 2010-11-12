@@ -4,23 +4,14 @@ import platform
 class StringSVM:
 
   labels = []
-  values = []
+  strings = []
 
   finalized = False
 
-  def __init__(self, kernelName='edit', tokenized=False, seqLambda=0.8, seqLen=5):
+  def __init__(self, kernelName):
 
-    # Validate
-    if (kernelName != 'edit' and kernelName != 'subseq'):
-      raise ValueError('unknown kernel name!')
-    if (tokenized and kernelName != 'subseq'):
-      raise ValueError('subseq is the only kernel that supports tokenization')
-
-    # Store the parameters
+    # Store the kernel name
     self.kernelName = kernelName
-    self.tokenized = tokenized
-    self.seqLambda = seqLambda
-    self.seqLen = seqLen
 
     # Load libSVM
     if platform.system() == "Windows":
@@ -46,23 +37,23 @@ class StringSVM:
       self.svmlib.svm_free_and_destroy_model(pointer(self.model))
       return
 
-  # Takes a list of (string, value) tuples, and stores them
+  # Takes a list of (string, string) tuples, and stores them
   def addSamples(self, samples):
-    newLabels, newValues = zip(*samples)
+    newLabels, newStrings = zip(*samples)
     self.labels = self.labels + list(newLabels)
-    self.values = self.values + list(newValues)
+    self.strings = self.strings + list(newStrings)
 
   # Takes a single sample and stores it
-  def addSample(self, label, value):
+  def addSample(self, label, string):
     self.labels.append(label)
-    self.values.append(value)
+    self.strings.append(string)
 
 
   # Finalizes the training data. No more data may be added
   def finalize(self):
 
     # Validate
-    if not self.values:
+    if not self.strings:
       raise RuntimeError("No training data!")
 
     # Generate a mapping from string labels to numbers
@@ -87,10 +78,10 @@ class StringSVM:
       raise RuntimeError("Must call finalize() before calling train()!")
 
     # Generate the problem
-    problem = svm_problem(self, self.labelsNumeric, self.values)
+    problem = svm_problem(self.labelsNumeric, self.strings)
 
     # Generate the parameters
-    params = svm_parameter(self)
+    params = svm_parameter(self.kernelName)
 
     # Generate the model
     self.model = self.svmlib.svm_train(problem, params)
@@ -118,7 +109,6 @@ SVM_TYPE_C_SVC = 0
 KERNEL_TYPE_EDIT = 5
 KERNEL_TYPE_SUBSEQ = 6
 DATA_TYPE_STRING = 1
-DATA_TYPE_TOKENS = 2
 class svm_parameter(Structure):
   _fields_ = [("svm_type", c_int),
               ("data_type", c_int),
@@ -137,20 +127,17 @@ class svm_parameter(Structure):
               ("shrinking", c_int),
               ("probability", c_int)]
 
-  def __init__(self, stringSVM):
+  def __init__(self, kernelName):
     Structure.__init__(self)
-
-    if (stringSVM.kernelName == "edit"):
-      self.kernel_type = KERNEL_TYPE_EDIT
-    else:
-      self.kernel_type = KERNEL_TYPE_SUBSEQ
-
-    if (stringSVM.tokenized):
-      self.data_type = DATA_TYPE_TOKENS
-    else:
-      self.data_type = DATA_TYPE_STRING
-
     self.svm_type = SVM_TYPE_C_SVC
+    if (kernelName == "edit"):
+      self.kernel_type = KERNEL_TYPE_EDIT
+    elif (kernelName == "subseq"):
+      self.kernel_type = KERNEL_TYPE_SUBSEQ
+    else:
+      raise ValueError("Bad Kernel Name!")
+
+    self.data_type = DATA_TYPE_STRING
     self.degree = 3
     self.gamma = 0.1
     self.coef0 = 0
@@ -173,19 +160,18 @@ class svm_model(Structure):
 class svm_data(Structure):
   _fields_ = [("v", c_void_p), # This is actually a pointer to an svm_node, but
       # it's always null for string operation.
-      ("s", c_char_p),
-      ("t", POINTER(c_uint))]
+      ("s", c_char_p)]
 
 class svm_problem(Structure):
   _fields_ = [("l", c_int),
               ("y", POINTER(c_double)),
               ("x", POINTER(svm_data))]
 
-  def __init__(self, stringSVM, labels, values):
+  def __init__(self, labels, strings):
 
     # Validate
-    if (len(labels) != len(values)):
-      raise ValueError("Need equal number of values and labels!")
+    if (len(labels) != len(strings)):
+      raise ValueError("Need equal number of strings and labels!")
 
     # Set the length
     self.l = len(labels)
@@ -197,12 +183,9 @@ class svm_problem(Structure):
     self.y = (c_double * self.l)()
     for i, label in enumerate(labels): self.y[i] = label
 
-    # Set the values
+    # Set the strings
     self.x = (svm_data * self.l)()
-    for i, val in enumerate(values):
+    for i, string in enumerate(strings):
       self.x[i].v = None
-      if (stringSVM.tokenized):
-        self.x[i].t = val
-      else:
-        self.x[i].s = val
+      self.x[i].s = string
 

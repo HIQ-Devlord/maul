@@ -9,42 +9,24 @@
  * http://www.learning-kernel-classifiers.org/code/string_kernels/strings.c
  * */
 
-template<typename T>
-void
-SubseqKernel<T>::Init(unsigned maxLen, unsigned seqLength, double lambda)
+SubseqKernel::SubseqKernel(unsigned maxLen, unsigned seqLength, double lambda)
 {
   // Store initialization parameters
   mMaxLen = maxLen;
   mSeqLength = seqLength;
   mLambda = lambda;
 
-  // Allocate memory for the dynamic programming cache variable
+  /* allocate memory for auxiallary cache variable */
   mCache  = (double ***) malloc (mSeqLength * sizeof (double **));
   for (unsigned i = 1; i < mSeqLength; i++) {
     mCache  [i] = (double **) malloc (mMaxLen * sizeof (double *));
     for (unsigned j = 0; j < maxLen; j++)
       mCache  [i] [j] = (double *) malloc (mMaxLen * sizeof (double));
   }
-
-  // Precompute powers of lambda
-  mLambdaPows = (double *) malloc ((maxLen + 2) * sizeof(double));
-  mLambdaPows[0] = 1;
-  mLambdaPows[1] = mLambda;
-  for (unsigned i = 2; i < maxLen + 2; ++i)
-    mLambdaPows[i] = mLambdaPows[i-1] * mLambda;
-
-
-  // Mark us as initialized
-  mInitialized = true;
 }
 
-template<typename T>
-SubseqKernel<T>::~SubseqKernel()
+SubseqKernel::~SubseqKernel()
 {
-  // If we were never initialized, there's nothing to do.
-  if (!mInitialized)
-    return;
-
   // Free the DP LUT
   for (unsigned i = 1; i < mSeqLength; i++) {
     for (unsigned j = 0; j < mMaxLen; j++) 
@@ -52,46 +34,35 @@ SubseqKernel<T>::~SubseqKernel()
     free(mCache[i]);
   }
   free(mCache);
-
-  // Free the lambda cache
-  free(mLambdaPows);
-
-  mInitialized = false;
 }
 
-template<typename T>
 double
-SubseqKernel<T>::Evaluate(const T *u, unsigned uLen, const T *v, unsigned vLen)
+SubseqKernel::Evaluate(const char *u, const char *v)
 {
-  // We must be initialized
-  if (!mInitialized) {
-    fprintf(stderr, "Trying to evaluate using subsequence kernel, but not intialized!\n");
-    exit(-1);
-  }
-
   // We're screwed if the string is too big.
-  if (uLen > mMaxLen || vLen > mMaxLen) {
+  unsigned ulen = strlen(u);
+  unsigned vlen = strlen(v);
+  if (ulen > mMaxLen || vlen > mMaxLen) {
     fprintf(stderr, "String passed to subsequence kernel is too large! Aborting!\n");
     exit(-1);
   }
 
   // New strings, so blow away the parts of the cache that we're going to use
   for (unsigned i = 1; i < mSeqLength; ++i)
-    for (unsigned j = 0; j < uLen; ++j)
-      for (unsigned k = 0; k < vLen; ++k)
+    for (unsigned j = 0; j < ulen; ++j)
+      for (unsigned k = 0; k < vlen; ++k)
         mCache[i][j][k] = -1.0;
 
   // Invoke recursion
-  return K(u, uLen, v, vLen, mSeqLength);
+  return K(u, strlen(u), v, strlen(v), mSeqLength);
 }
 
 /*
  * Protected helper methods
  */
 
-template<typename T>
 double
-SubseqKernel<T>::Kprime(const T *u, int p, const T *v, int q, int n)
+SubseqKernel::Kprime(const char *u, int p, const char *v, int q, int n)
 {
   int j;
   double tmp;
@@ -108,16 +79,16 @@ SubseqKernel<T>::Kprime(const T *u, int p, const T *v, int q, int n)
   /* case 3: recursion */
   for (j= 0, tmp = 0; j < q; j++) {
     if (v [j] == u [p - 1]) 
-      tmp += Kprime (u, p - 1, v, j, n - 1) * mLambdaPows[q-j+1];
+      tmp += Kprime (u, p - 1, v, j, n - 1) *
+        pow (mLambda, (float) (q - j + 1));
   }
 
   mCache [n] [p] [q] = mLambda * Kprime (u, p - 1, v, q, n) + tmp;
   return (mCache [n] [p] [q]);
 }
 
-template<typename T>
 double
-SubseqKernel<T>::K(const T *u, int p, const T *v, int q, int n)
+SubseqKernel::K(const char *u, int p, const char *v, int q, int n)
 {
   int j;
   double KP;
