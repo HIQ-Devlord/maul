@@ -35,6 +35,10 @@ class StringSVM:
     self.svmlib.svm_predict_p.argtypes = [POINTER(svm_model), POINTER(svm_data)]
     self.svmlib.svm_free_and_destroy_model.restype = None
     self.svmlib.svm_free_and_destroy_model.argtypes = [POINTER(POINTER(svm_model))]
+    self.svmlib.svm_save_model.restype = c_int
+    self.svmlib.svm_save_model.argtypes = [c_char_p, POINTER(svm_model)]
+    self.svmlib.svm_load_model.restype = POINTER(svm_model)
+    self.svmlib.svm_load_model.argtypes = [c_char_p]
 
   def __del__(self):
     try:
@@ -95,7 +99,7 @@ class StringSVM:
     # Generate the model
     self.model = self.svmlib.svm_train(problem, params)
 
-  def predict(self, val):
+  def predict(self, string):
 
     # Validate
     if not hasattr(self, 'model'):
@@ -104,17 +108,47 @@ class StringSVM:
     # Make a prediction
     query = svm_data()
     query.v = None
-    if (self.tokenized):
-      query.t = (c_uint * (len(val) + 1))()
-      query.t[0] = len(val)
-      for j,num in enumerate(val):
-        query.t[j+1] = num
-    else:
-      query.s = val
-    print query
+    query.s = string
     prediction = self.svmlib.svm_predict_p(self.model, pointer(query))
 
     return self.reverseLabelMap[int(prediction)]
+
+  def svm_save_model(self,model_file_name):
+	"""
+	svm_save_model(model_file_name, model) -> None
+
+	Save a LIBSVM model to the file model_file_name.
+	"""
+	self.svmlib.svm_save_model(model_file_name, self.model)
+
+  def svm_load_model(self,model_file_name):
+    """
+    svm_load_model(model_file_name) -> model
+    Load a LIBSVM model from model_file_name and return.
+    """
+    model = self.svmlib.svm_load_model(model_file_name)
+    if not model: 
+      print("can't open model file %s" % model_file_name)
+      return None
+    print model  
+    self.model = self.toPyModel(model)
+    #self.model = model
+    return self.model 
+
+
+
+  def toPyModel(self,model_ptr):
+    """
+    toPyModel(model_ptr) -> svm_model
+    Convert a ctypes POINTER(svm_model) to a Python svm_model
+    """
+    if bool(model_ptr) == False:
+        raise ValueError("Null pointer")
+    m = model_ptr.contents
+    m.__createfrom__ = 'C'
+    return m
+
+
 
 """
 Python Wrappers for C Data Structures
@@ -209,10 +243,7 @@ class svm_problem(Structure):
     for i, val in enumerate(values):
       self.x[i].v = None
       if (stringSVM.tokenized):
-        self.x[i].t = (c_uint * (len(val) + 1))()
-        self.x[i].t[0] = len(val) # First element of a token string is the length
-        for j, num in enumerate(val):
-          self.x[i].t[j+1] = num
+        self.x[i].t = val
       else:
         self.x[i].s = val
 
