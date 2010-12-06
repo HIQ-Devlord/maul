@@ -6,7 +6,7 @@ from uaobj import *
 def main():
     tokenfreq = {}
     tokendict = {}
-    ualist = readFile('source/uadata_CLEAN.txt')
+    ualist = readFile('uadata_CLEAN.txt')
     print "Number of UA Strings: ", len(ualist)
     for (i,x) in enumerate(ualist):
         tokenlist = gentokenlist(x)
@@ -39,7 +39,7 @@ def main():
         x.data['Tokens'] = ''
         for y in re.split('[.(),;/\s]',uaString):
             if not y == "":
-                y = rewrite(y)
+                y = numcheck(y)
                 x.data['Tokens'] = x.data['Tokens'] + str(tokendict[y]) + ' '
         fua.write(x+'\n')    
             
@@ -56,27 +56,17 @@ def gentokenlist(x):
         x = x.strip().rstrip()
         if not x == "":
             # number check            
-            x = rewrite(x)
+            x = numcheck(x)
             tokenlist.append(x)
 
     return tokenlist
-
-def rewrite(x): # Performs various token rewrites
-
-    # Strip whitespace
-    x = x.strip().rstrip()
-
-    # Rewrite numbers to their length
+def numcheck(x): # check if is integer number
+    # x is a string, check if it is a number
+    x = x.strip().rstrip() # strip off any whitespace
     if x.isdigit():
         return str(len(x)) # return length of number
-
-    # Rewrite the common +http: token to http:
-    elif x == "+http:":
-      return "http:"
-
-    # Common case - return the original string
     else:
-        return x
+        return x # return just the string itself
 
 
 
