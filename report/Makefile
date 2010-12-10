@@ -1,6 +1,6 @@
 all:
 	pdflatex report.tex
-	bibtex report.aux
+	bibtex milestone.aux
 	pdflatex report.tex
 	pdflatex report.tex
 
